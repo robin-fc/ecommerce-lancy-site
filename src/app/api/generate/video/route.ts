@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { generateImage, generateVideo } from "@/lib/yunwu";
 import { v4 as uuidv4 } from "uuid";
 import { jobs } from "@/lib/jobs";
-import type { Storyboard } from "@/lib/types";
+import type { Storyboard, GenerationJob } from "@/lib/types";
 
 // POST /api/generate/video
 // 输入：Storyboard
