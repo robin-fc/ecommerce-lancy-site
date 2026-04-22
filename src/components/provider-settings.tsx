@@ -35,7 +35,7 @@ export function ProviderSettings({ onSave, initialConfig }: ProviderSettingsProp
 
   // 切换厂商时自动设置默认值
   useEffect(() => {
-    if (providerId === "yunwu") setBaseUrl("https://api.yunwu.ai/v1");
+    if (providerId === "yunwu") setBaseUrl("https://api.yunwu.ai");
     else if (providerId === "openai") setBaseUrl("https://api.openai.com/v1");
     else setBaseUrl("");
 

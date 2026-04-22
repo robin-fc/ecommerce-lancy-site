@@ -56,9 +56,25 @@ ${refImagesSection}
 - 分辨率: ${resolution}
 - 单段时长: 约 ${Math.round(totalDuration / numScenes)} 秒
 
-## ⚠️ 关键要求：故事连贯性
+## ⚠️ 关键要求：故事连贯性与分镜过渡
 
 **你必须创作一个完整、连贯的故事，而非独立分镜的拼接！**
+
+### 🎯 分镜过渡核心原则
+每个分镜的**结束画面**必须与下一分镜的**起始画面**形成以下某种连接：
+
+1. **动作连续**：动作不中断（如：人物抬手→下一分镜手已完成动作）
+2. **视线延续**：角色视线指向的方向，就是下一分镜的场景
+3. **物体传递**：某物体从画面一端移到另一端，跨越分镜
+4. **情绪定格**：表情/情绪延续，让观众感受到连贯的情感流
+5. **时间延续**：同一场景的时间推进（如：黄昏→夜晚）
+6. **空间推进**：镜头从特写→中景→远景的自然过渡
+
+### 画面衔接示例（必须遵循）：
+- ❌ 割裂：分镜1结束"猫咪在地板"，分镜2开始"厨房里的菜"
+- ✅ 连续：分镜1结束"猫咪跳跃在空中" → 分镜2开始"猫咪落在厨房台面上"
+- ❌ 割裂：分镜2结束"老人叹气"，分镜3开始"阳光下的海滩"
+- ✅ 连续：分镜2结束"老人看向窗外" → 分镜3开始"窗外阳光明媚的海滩"
 
 ### 剧情结构（遵循经典叙事）：
 1. **开场（分镜1）**：建立场景，引入主角/商品，制造悬念或吸引力
@@ -129,19 +145,41 @@ export function buildScenePrompt(params: {
 
   let roleGuidance = '';
   if (isFirst) {
-    roleGuidance = '你是开场导演。建立场景，引入主角/商品，制造吸引力或悬念。让观众想看下去。';
+    roleGuidance = `你是开场导演。建立场景，引入主角/商品，制造吸引力或悬念。让观众想看下去。
+    
+开场技巧：
+- 设置悬念或反常现象，让观众想知道接下来会发生什么
+- 引入核心角色或商品，但不要急于展示全部
+- 为后续转折埋下伏笔`;
   } else if (isLast) {
-    roleGuidance = '你是结尾导演。给出反转、点睛、或品牌记忆点。让观众记住这个故事。';
+    roleGuidance = `你是结尾导演。给出反转、点睛、或品牌记忆点。让观众记住这个故事。
+
+结尾技巧：
+- 与开篇形成呼应（视觉或情感上）
+- 商品/品牌作为"啊哈时刻"出现，让观众恍然大悟
+- 留下余味，让观众回味`;
   } else {
-    roleGuidance = '你是剧情推进导演。承接上一分镜的结束画面，推进故事发展。';
+    roleGuidance = `你是剧情推进导演。承接上一分镜的结束画面，推进故事发展。
+
+推进技巧：
+- 延续上一分镜的结束动作/情绪/视线
+- 每个分镜要有进展，不能原地踏步
+- 为下一分镜埋下钩子`;
   }
 
   const continuitySection = previousScene
     ? `
-## 上一分镜的结束画面（你的起始画面必须与此衔接）
-"${previousScene.endFrameHint}"
-上一分镜的视频 Prompt：${previousScene.videoPrompt}
-`
+## 🚨 关键：必须衔接上一分镜的结束画面
+上一分镜结束于："${previousScene.endFrameHint}"
+上一分镜视频："${previousScene.videoPrompt}"
+
+你的起始画面必须满足以下 ONE 条件（选择最自然的衔接方式）：
+1. 动作连续：承接上一分镜的结束动作（如果上一分镜是"跳起"，你开始于"空中"或"落下"）
+2. 视线/方向连续：角色看的方向，就是你新场景的展开方向
+3. 物体连续：同一物体从画面一边延伸到你的画面中
+4. 情绪连续：角色的表情/情绪保持一致再逐渐变化
+5. 时间连续：同一场景的时间流逝（如：黄昏→夜晚）
+6. 空间连续：镜头从特写拉远/推进到新场景`
     : '';
 
   const refImageSection = referenceImageDescriptions.length > 0
@@ -161,9 +199,9 @@ ${refImageSection}
 - 这是一段连贯故事的第 ${sceneIndex + 1} 个镜头
 
 ## 输出格式（严格 JSON，单行）
-{"id":"scene_${sceneIndex + 1}","order":${sceneIndex + 1},"description":"中文描述（2-3句话）","startFrameHint":"起始画面状态","endFrameHint":"结束画面状态（要能衔接下一分镜）","imagePrompt":"英文图像Prompt","videoPrompt":"英文视频Prompt：起始→动作→结束","transition":"fade|dissolve|wipe|zoom|none"}
+{"id":"scene_${sceneIndex + 1}","order":${sceneIndex + 1},"description":"中文描述（2-3句话，包含与上下分镜的衔接）","startFrameHint":"起始画面：精确描述画面中的一切（人物位置、表情、物体位置、摄像机角度），必须衔接上一分镜结束画面","endFrameHint":"结束画面：精确描述画面状态，必须能让下一分镜自然衔接","imagePrompt":"英文图像Prompt，${ASPECT_HINTS[aspectRatio as AspectRatio]}","videoPrompt":"英文视频Prompt：起始状态→完整动作过程→结束状态，摄像机运动自然","transition":"fade|dissolve|wipe|zoom|none"}
 
-${isLast ? '这是最后一个分镜，给出精彩结尾！' : '记住：你的结束画面要能让下一个分镜自然衔接。'}
+${isLast ? '这是最后一个分镜，给出精彩结尾！' : '记住：你的 startFrameHint 必须精确描述画面状态，让下一分镜能够完美衔接。'}
 只输出 JSON，不要有其他内容。`;
 }
 

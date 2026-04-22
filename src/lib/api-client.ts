@@ -32,17 +32,18 @@ async function yunwuRequest<T = unknown>(
   config: UserLLMConfig,
   endpoint: string,
   body: Record<string, unknown>,
+  method: 'POST' | 'GET' = 'POST',
 ): Promise<T> {
   const baseUrl = config.baseUrl ?? 'https://api.yunwu.ai';
   const url = `${baseUrl}${endpoint}`;
 
   const res = await fetch(url, {
-    method: 'POST',
+    method,
     headers: {
       'Content-Type': 'application/json',
       Authorization: `Bearer ${config.apiKey}`,
     },
-    body: JSON.stringify(body),
+    body: method === 'POST' ? JSON.stringify(body) : undefined,
   });
 
   if (!res.ok) {
@@ -121,6 +122,12 @@ export interface VideoResult {
   jobId?: string;
 }
 
+// 模型 ID 映射：前端友好名 → Vidu API 模型名
+const VIDU_MODEL_MAP: Record<string, string> = {
+  'vidu-2.0': 'viduq2-pro',   // 实际可用名
+  'vidu-1.5': 'viduq1',
+};
+
 export async function generateVideo(
   config: UserLLMConfig,
   prompt: string,
@@ -128,35 +135,49 @@ export async function generateVideo(
   duration: number = 5,
   aspectRatio: AspectRatio = '16:9',
   resolution: Resolution = '720p',
-  _model?: string,
+  model?: string,
+  callbackUrl?: string,
 ): Promise<VideoResult> {
-  // 云雾 Vidu 2.0 正确端点：/ent/v2/img2video
-  // 参考文档：https://yunwu.ai/pricing?provider=Vidu&category=音视频
-  const result = await yunwuRequest<{
-    job_id?: string;
-    video_url?: string;
-    url?: string;
-    status?: string;
-    message?: string;
-  }>(config, '/ent/v2/img2video', {
-    model: 'vidu2.0',
-    image_url: imageUrl,
+  const apiModel = VIDU_MODEL_MAP[model ?? ''] ?? 'viduq2';
+
+  // 云雾 Vidu 端点：POST /ent/v2/img2video
+  // 支持 callback_url，任务完成时 Vidu 主动推送通知
+  const body: Record<string, unknown> = {
+    model: apiModel,
+    images: [imageUrl],
     prompt,
     duration: duration > 4 ? 8 : 4,
-    resolution: RESOLUTION_MAP[resolution],
+  };
+  if (callbackUrl) {
+    body.callback_url = callbackUrl;
+  }
+
+  const result = await yunwuRequest<{
+    task_id?: string;
+    job_id?: string;
+    state?: string;
+    creations?: { url?: string }[];
+    url?: string;
+    message?: string;
+  }>(config, '/ent/v2/img2video', {
+    model: apiModel,
+    images: [imageUrl],
+    prompt,
+    duration: duration > 4 ? 8 : 4,
   });
 
-  // 直接返回视频 URL（部分情况同步返回）
-  if (result.video_url) {
-    return { videoUrl: result.video_url, duration };
-  }
-  if (result.url) {
-    return { videoUrl: result.url, duration };
+  // 同步完成：直接返回视频 URL
+  if (result.state === 'success' || result.creations?.[0]?.url) {
+    return {
+      videoUrl: result.creations?.[0]?.url ?? result.url ?? '',
+      duration,
+    };
   }
 
-  // 异步模式：返回 job_id 供后续轮询
-  if (result.job_id) {
-    return { videoUrl: '', duration, jobId: result.job_id };
+  // 异步模式：返回 task_id 供后续轮询
+  const taskId = result.task_id || result.job_id;
+  if (taskId) {
+    return { videoUrl: '', duration, jobId: taskId };
   }
 
   throw new Error(`视频生成响应格式未知: ${JSON.stringify(result)}`);
@@ -167,34 +188,41 @@ export async function generateVideo(
 // ============================================================
 export async function queryVideoJob(
   config: UserLLMConfig,
-  jobId: string,
+  taskId: string,
 ): Promise<{
   status: 'pending' | 'processing' | 'completed' | 'failed';
   videoUrl?: string;
   error?: string;
 }> {
+  // 云雾 Vidu 状态查询正确端点：GET /ent/v2/tasks/{taskId}/creations
+  // 实测响应格式：
+  // {
+  //   "task_id": "944462596658962432",
+  //   "state": "success",            // created / processing / success / failed
+  //   "progress": 100,
+  //   "creations": [{ "id": "...", "url": "https://...", "cover_url": "https://..." }]
+  // }
   const result = await yunwuRequest<{
-    status: string;
+    state?: string;
+    status?: string;
+    error_msg?: string;
+    message?: string;
+    creations?: { url?: string; cover_url?: string }[];
     video_url?: string;
     url?: string;
-    error?: string;
-    message?: string;
-  }>(config, `/ent/v2/img2video/status/${jobId}`, {});
+  }>(config, `/ent/v2/tasks/${taskId}/creations`, {}, 'GET');
 
-  if (result.status === 'completed' || result.status === 'succeed') {
-    return {
-      status: 'completed',
-      videoUrl: result.video_url ?? result.url,
-    };
-  }
-  if (result.status === 'failed') {
-    return { status: 'failed', error: result.error ?? result.message };
-  }
+  const state = result.state ?? result.status;
 
-  return {
-    status: result.status as 'pending' | 'processing',
-    videoUrl: result.video_url ?? result.url,
-  };
+  if (state === 'success' || state === 'completed') {
+    const videoUrl = result.creations?.[0]?.url ?? result.video_url ?? result.url;
+    return { status: 'completed', videoUrl };
+  }
+  if (state === 'failed') {
+    return { status: 'failed', error: result.error_msg ?? result.message };
+  }
+  // created / processing / pending 都当处理中
+  return { status: 'processing' };
 }
 
 // ============================================================

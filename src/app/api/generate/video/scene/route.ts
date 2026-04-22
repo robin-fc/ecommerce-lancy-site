@@ -97,7 +97,10 @@ export async function POST(req: NextRequest) {
       5,
       aspectRatio,
       resolution,
-      llmConfig.videoModel
+      llmConfig.videoModel,
+      process.env.MERGE_SERVICE_URL 
+        ? `${process.env.MERGE_SERVICE_URL}/api/webhooks/vidu`
+        : undefined  // 本地开发不传，Railway 会自动注入
     );
 
     // 同步模式：直接拿到视频 URL
