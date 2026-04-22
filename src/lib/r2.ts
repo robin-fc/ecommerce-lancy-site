@@ -29,14 +29,22 @@ export async function uploadToR2(
   body: Buffer | Uint8Array,
   contentType: string,
 ): Promise<string> {
-  await R2.send(
-    new PutObjectCommand({
-      Bucket: BUCKET,
-      Key: key,
-      Body: body,
-      ContentType: contentType,
-    }),
-  );
+  try {
+    await R2.send(
+      new PutObjectCommand({
+        Bucket: BUCKET,
+        Key: key,
+        Body: body,
+        ContentType: contentType,
+      }),
+    );
+  } catch (err: unknown) {
+    console.error("[R2] uploadToR2 error:", err);
+    if (err instanceof Error) {
+      throw new Error(`R2 上传失败: ${err.message}`);
+    }
+    throw err;
+  }
 
   return `${PUBLIC_URL}/${key}`;
 }

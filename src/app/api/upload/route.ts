@@ -20,12 +20,22 @@ export async function POST(req: NextRequest) {
 
     // 服务端上传到 R2 或本地
     const buffer = Buffer.from(await file.arrayBuffer());
-    const publicUrl = await saveFile(key, buffer, file.type);
-
-    return NextResponse.json({ publicUrl });
+    
+    try {
+      const publicUrl = await saveFile(key, buffer, file.type);
+      return NextResponse.json({ publicUrl });
+    } catch (saveErr: unknown) {
+      // 详细错误日志
+      console.error("[/api/upload] saveFile error:", saveErr);
+      const errMsg = saveErr instanceof Error ? saveErr.message : String(saveErr);
+      return NextResponse.json({ 
+        error: `存储失败: ${errMsg}`,
+        details: process.env.NODE_ENV === "development" ? errMsg : undefined
+      }, { status: 500 });
+    }
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : "服务器内部错误";
-    console.error("[/api/upload]", message);
+    console.error("[/api/upload] request error:", err);
     return NextResponse.json({ error: message }, { status: 500 });
   }
 }

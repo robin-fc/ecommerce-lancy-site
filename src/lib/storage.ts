@@ -26,7 +26,7 @@ function hasR2Config(): boolean {
   const accessKey = process.env.R2_ACCESS_KEY_ID;
   const secretKey = process.env.R2_SECRET_ACCESS_KEY;
   
-  return !!(
+  const configured = !!(
     accountId && 
     accessKey && 
     secretKey &&
@@ -34,6 +34,13 @@ function hasR2Config(): boolean {
     accessKey !== 'your_r2_access_key_id' &&
     secretKey !== 'your_r2_secret_access_key'
   );
+  
+  // 调试日志
+  if (!configured) {
+    console.log("[storage] R2 未配置，使用本地存储");
+  }
+  
+  return configured;
 }
 
 /**
