@@ -2,6 +2,8 @@
 // 核心类型定义
 // ============================================================
 
+import type { ProviderId } from './providers';
+
 export type TransitionType = 'fade' | 'dissolve' | 'wipe' | 'zoom' | 'none';
 export type AspectRatio = '9:16' | '16:9' | '1:1';
 export type Resolution = '720p' | '1080p';
@@ -30,10 +32,11 @@ export interface Storyboard {
 export interface GenerationJob {
   id: string;
   storyboardId: string;
-  status: 'pending' | 'generating_images' | 'generating_videos' | 'merging' | 'done' | 'failed';
+  status: 'pending' | 'generating_image' | 'generating_video' | 'merging' | 'done' | 'failed';
   progress: number;           // 0-100
   currentStep: string;
   resultUrl?: string;         // 最终拼接后的视频 URL
+  externalJobId?: string;     // 外部视频任务 ID（云雾等异步任务）
   sceneResults: {
     sceneId: string;
     imageUrl?: string;
@@ -41,6 +44,18 @@ export interface GenerationJob {
   }[];
   error?: string;
   createdAt: string;
+  // 用户 LLM 配置（序列化）
+  llmConfig?: UserLLMConfig;
+}
+
+// 用户 LLM 配置
+export interface UserLLMConfig {
+  providerId: ProviderId;
+  apiKey: string;
+  baseUrl?: string;          // 自定义中转 base URL
+  chatModel: string;         // 故事板生成模型
+  imageModel?: string;        // 图像生成模型（可选）
+  videoModel: string;         // 视频生成模型
 }
 
 // API 请求/响应类型
@@ -51,6 +66,8 @@ export interface GenerateStoryboardRequest {
   aspectRatio: AspectRatio;
   resolution: Resolution;
   style?: VideoStyle;
+  // 用户 LLM 配置
+  llmConfig: UserLLMConfig;
 }
 
 export interface GenerateStoryboardResponse {
@@ -61,6 +78,7 @@ export interface GenerateImageRequest {
   prompt: string;
   referenceImageUrl?: string;
   aspectRatio: AspectRatio;
+  llmConfig: UserLLMConfig;
 }
 
 export interface GenerateVideoRequest {
@@ -69,4 +87,5 @@ export interface GenerateVideoRequest {
   duration: VideoDuration;
   aspectRatio: AspectRatio;
   resolution: Resolution;
+  llmConfig: UserLLMConfig;
 }

@@ -1,19 +1,34 @@
 import { NextRequest, NextResponse } from "next/server";
-import { generateImage } from "@/lib/yunwu";
-import type { AspectRatio } from "@/lib/types";
+import { generateImage } from "@/lib/api-client";
+import type { AspectRatio, UserLLMConfig } from "@/lib/types";
 
 // POST /api/generate/image
-// 输入：prompt + referenceImageUrl + aspectRatio
+// 输入：{ prompt, referenceImageUrl, aspectRatio, llmConfig }
 // 输出：{ url }
 export async function POST(req: NextRequest) {
   try {
-    const { prompt, referenceImageUrl, aspectRatio = "16:9" } = await req.json();
+    const { prompt, referenceImageUrl, aspectRatio = "16:9", llmConfig } =
+      (await req.json()) as {
+        prompt: string;
+        referenceImageUrl?: string;
+        aspectRatio?: string;
+        llmConfig: UserLLMConfig;
+      };
 
     if (!prompt) {
       return NextResponse.json({ error: "Prompt 不能为空" }, { status: 400 });
     }
 
-    const result = await generateImage(prompt, referenceImageUrl, aspectRatio as AspectRatio);
+    if (!llmConfig || !llmConfig.apiKey || !llmConfig.providerId) {
+      return NextResponse.json({ error: "请先配置模型厂商和 API Key" }, { status: 400 });
+    }
+
+    const result = await generateImage(
+      llmConfig,
+      prompt,
+      referenceImageUrl,
+      aspectRatio as AspectRatio
+    );
 
     return NextResponse.json({ url: result.url, revisedPrompt: result.revisedPrompt });
   } catch (err: unknown) {

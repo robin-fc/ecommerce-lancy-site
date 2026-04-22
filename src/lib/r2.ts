@@ -18,7 +18,7 @@ const R2 = new S3Client({
   },
 });
 
-const BUCKET = process.env.R2_BUCKET_NAME ?? 'ecommerce-videos';
+const BUCKET = process.env.R2_BUCKET_NAME ?? 'ecommerce-lancy-site';
 const PUBLIC_URL = process.env.R2_PUBLIC_URL ?? '';
 
 /**
@@ -35,8 +35,6 @@ export async function uploadToR2(
       Key: key,
       Body: body,
       ContentType: contentType,
-      // 公开读取
-      ACL: 'public-read' as never,
     }),
   );
 
@@ -45,7 +43,6 @@ export async function uploadToR2(
 
 /**
  * 生成一个用于客户端上传的预签名 URL（PUT）
- * 客户端直接 PUT 文件到 R2，不经过服务器中转
  */
 export async function createUploadUrl(
   key: string,
