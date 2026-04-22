@@ -65,7 +65,7 @@ export const PROVIDERS: Provider[] = [
     id: 'yunwu',
     name: '云雾 API',
     logo: '☁️',
-    baseUrl: 'https://api.yunwu.ai/v1',
+    baseUrl: 'https://api.yunwu.ai',
     models: [
       { id: 'gpt-4o', label: 'GPT-4o（故事板）', supports: ['chat'] },
       { id: 'vidu-2.0', label: 'Vidu 2.0（⚡ 快）', supports: ['video'] },
