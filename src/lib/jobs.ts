@@ -61,4 +61,12 @@ export const jobs = {
     saveJobs();
     return result;
   },
+
+  entries(): IterableIterator<[string, GenerationJob]> {
+    return loadJobs().entries();
+  },
+
+  [Symbol.iterator](): IterableIterator<[string, GenerationJob]> {
+    return loadJobs().entries();
+  },
 };
