@@ -120,13 +120,24 @@ export interface VideoResult {
   videoUrl: string;
   duration: number;
   jobId?: string;
+  provider?: 'vidu' | 'kling';
 }
 
-// 模型 ID 映射：前端友好名 → Vidu API 模型名
+// 模型 ID 映射：前端友好名 → API 模型名
 const VIDU_MODEL_MAP: Record<string, string> = {
-  'vidu-2.0': 'viduq2-pro',   // 实际可用名
+  'vidu-2.0': 'viduq2-pro',
   'vidu-1.5': 'viduq1',
 };
+
+// 可灵模型名称
+const KLING_MODELS = ['kling-v1-5', 'kling-v2-0', 'kling-v2-1', 'kling-v2-5', 'kling-v3'];
+
+// 判断是否为可灵模型
+function isKlingModel(model?: string): boolean {
+  if (!model) return false;
+  const normalized = model.toLowerCase().replace(/[^a-z0-9-]/g, '');
+  return KLING_MODELS.some(k => normalized.includes(k.replace(/[^a-z0-9-]/g, '')));
+}
 
 export async function generateVideo(
   config: UserLLMConfig,
@@ -138,10 +149,72 @@ export async function generateVideo(
   model?: string,
   callbackUrl?: string,
 ): Promise<VideoResult> {
+  // 可灵模型使用单独的 API 端点
+  if (isKlingModel(model)) {
+    return generateKlingVideo(config, prompt, imageUrl, duration, aspectRatio, model, callbackUrl);
+  }
+
+  // Vidu 模型
+  return generateViduVideo(config, prompt, imageUrl, duration, model, callbackUrl);
+}
+
+// 可灵视频生成
+async function generateKlingVideo(
+  config: UserLLMConfig,
+  prompt: string,
+  imageUrl: string,
+  duration: number,
+  aspectRatio: AspectRatio,
+  model?: string,
+  callbackUrl?: string,
+): Promise<VideoResult> {
+  const klingModelMap: Record<string, string> = {
+    'kling-v1-5': 'kling-v1-5',
+    'kling-v2-0': 'kling-v2-master',
+    'kling-v2-1': 'kling-v2-1',
+    'kling-v2-5': 'kling-v2-5-turbo',
+    'kling-v3': 'kling-v3',
+  };
+  const apiModel = klingModelMap[model ?? ''] ?? 'kling-v2-master';
+
+  const body: Record<string, unknown> = {
+    model_name: apiModel,
+    image: imageUrl,
+    prompt,
+    duration,
+    cfg_scale: 0.5,
+    mode: 'std',
+  };
+  if (callbackUrl) {
+    body.callback_url = callbackUrl;
+  }
+
+  const result = await yunwuRequest<{
+    data?: { task_id?: string; task_status?: string };
+    task_id?: string;
+    code?: number;
+    message?: string;
+  }>(config, '/kling/v1/videos/image2video', body);
+
+  const taskId = result.data?.task_id || result.task_id;
+  if (taskId) {
+    return { videoUrl: '', duration, jobId: taskId, provider: 'kling' };
+  }
+
+  throw new Error(`可灵视频生成失败: ${result.message ?? JSON.stringify(result)}`);
+}
+
+// Vidu 视频生成
+async function generateViduVideo(
+  config: UserLLMConfig,
+  prompt: string,
+  imageUrl: string,
+  duration: number,
+  model?: string,
+  callbackUrl?: string,
+): Promise<VideoResult> {
   const apiModel = VIDU_MODEL_MAP[model ?? ''] ?? 'viduq2';
 
-  // 云雾 Vidu 端点：POST /ent/v2/img2video
-  // 支持 callback_url，任务完成时 Vidu 主动推送通知
   const body: Record<string, unknown> = {
     model: apiModel,
     images: [imageUrl],
@@ -159,34 +232,43 @@ export async function generateVideo(
     creations?: { url?: string }[];
     url?: string;
     message?: string;
-  }>(config, '/ent/v2/img2video', {
-    model: apiModel,
-    images: [imageUrl],
-    prompt,
-    duration: duration > 4 ? 8 : 4,
-  });
+  }>(config, '/ent/v2/img2video', body);
 
-  // 同步完成：直接返回视频 URL
   if (result.state === 'success' || result.creations?.[0]?.url) {
-    return {
-      videoUrl: result.creations?.[0]?.url ?? result.url ?? '',
-      duration,
-    };
+    return { videoUrl: result.creations?.[0]?.url ?? result.url ?? '', duration };
   }
 
-  // 异步模式：返回 task_id 供后续轮询
   const taskId = result.task_id || result.job_id;
   if (taskId) {
-    return { videoUrl: '', duration, jobId: taskId };
+    return { videoUrl: '', duration, jobId: taskId, provider: 'vidu' };
   }
 
-  throw new Error(`视频生成响应格式未知: ${JSON.stringify(result)}`);
+  throw new Error(`Vidu 视频生成响应格式未知: ${JSON.stringify(result)}`);
 }
 
 // ============================================================
-// 查询视频任务状态（云雾 Vidu 异步模式）
+// 查询视频任务状态（云雾 Vidu / 可灵 异步模式）
 // ============================================================
 export async function queryVideoJob(
+  config: UserLLMConfig,
+  taskId: string,
+  provider: 'vidu' | 'kling' = 'vidu',
+): Promise<{
+  status: 'pending' | 'processing' | 'completed' | 'failed';
+  videoUrl?: string;
+  error?: string;
+}> {
+  // 可灵状态查询
+  if (provider === 'kling') {
+    return queryKlingJob(config, taskId);
+  }
+
+  // Vidu 状态查询
+  return queryViduJob(config, taskId);
+}
+
+// 可灵任务查询
+async function queryKlingJob(
   config: UserLLMConfig,
   taskId: string,
 ): Promise<{
@@ -194,14 +276,40 @@ export async function queryVideoJob(
   videoUrl?: string;
   error?: string;
 }> {
-  // 云雾 Vidu 状态查询正确端点：GET /ent/v2/tasks/{taskId}/creations
-  // 实测响应格式：
-  // {
-  //   "task_id": "944462596658962432",
-  //   "state": "success",            // created / processing / success / failed
-  //   "progress": 100,
-  //   "creations": [{ "id": "...", "url": "https://...", "cover_url": "https://..." }]
-  // }
+  const result = await yunwuRequest<{
+    data?: {
+      task_status?: string;
+      task_status_msg?: string;
+      task_result?: {
+        videos?: { url?: string; id?: string }[];
+      };
+    };
+    code?: number;
+    message?: string;
+  }>(config, `/kling/v1/videos/image2video/${taskId}`, {}, 'GET');
+
+  const status = result.data?.task_status?.toLowerCase();
+
+  if (status === 'succeed' || status === 'success') {
+    const videoUrl = result.data?.task_result?.videos?.[0]?.url;
+    return { status: 'completed', videoUrl };
+  }
+  if (status === 'failed') {
+    return { status: 'failed', error: result.data?.task_status_msg ?? result.message };
+  }
+  // submitted / processing
+  return { status: 'processing' };
+}
+
+// Vidu 任务查询
+async function queryViduJob(
+  config: UserLLMConfig,
+  taskId: string,
+): Promise<{
+  status: 'pending' | 'processing' | 'completed' | 'failed';
+  videoUrl?: string;
+  error?: string;
+}> {
   const result = await yunwuRequest<{
     state?: string;
     status?: string;
@@ -221,7 +329,6 @@ export async function queryVideoJob(
   if (state === 'failed') {
     return { status: 'failed', error: result.error_msg ?? result.message };
   }
-  // created / processing / pending 都当处理中
   return { status: 'processing' };
 }
 

@@ -37,6 +37,7 @@ export interface GenerationJob {
   currentStep: string;
   resultUrl?: string;         // 最终拼接后的视频 URL
   externalJobId?: string;     // 外部视频任务 ID（云雾等异步任务）
+  videoProvider?: 'vidu' | 'kling'; // 视频生成提供商
   sceneResults: {
     sceneId: string;
     imageUrl?: string;

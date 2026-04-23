@@ -116,10 +116,11 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ jobId, sceneId: scene.id, status: "done", videoUrl: videoResult.videoUrl });
     }
 
-    // 异步模式：记录 externalJobId，前端轮询
+    // 异步模式：记录 externalJobId 和 provider，前端轮询
     if (videoResult.jobId) {
       const job = jobs.get(jobId)!;
       job.externalJobId = videoResult.jobId;
+      job.videoProvider = videoResult.provider;
       job.currentStep = `分镜 ${sceneIndex + 1}/${totalScenes}：等待视频生成...`;
       job.progress = 60;
       jobs.set(jobId, job);
@@ -164,7 +165,7 @@ export async function GET(req: NextRequest) {
   // 如果有 externalJobId 且状态是 generating_video，查询外部任务状态
   if (job.externalJobId && job.status === "generating_video") {
     try {
-      const status = await queryVideoJob(job.llmConfig!, job.externalJobId);
+      const status = await queryVideoJob(job.llmConfig!, job.externalJobId, job.videoProvider ?? 'vidu');
 
       if (status.status === "completed" && status.videoUrl) {
         job.status = "done";
